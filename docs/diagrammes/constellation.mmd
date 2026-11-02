@@ -1,0 +1,37 @@
+flowchart LR
+    classDef fait fill:#dbe8fa,stroke:#2a78d6,color:#0b0b0b
+    classDef dim fill:#fdebe3,stroke:#eb6834,color:#0b0b0b
+    classDef scd fill:#fdebe3,stroke:#c43d3c,stroke-width:3px,color:#0b0b0b
+    F1[F1 fait_ligne_expedition]:::fait
+    F2[F2 fait_dedouanement]:::fait
+    F3[F3 fait_incident]:::fait
+    F4[F4 fait_police_assurance]:::fait
+    F5[F5 fait_sinistre]:::fait
+    F6[F6 fait_evenement_conteneur]:::fait
+    F7[F7 fait_mouvement_stock]:::fait
+    F8[F8 fait_tarif_fret]:::fait
+    F9[F9 fait_marche_quotidien]:::fait
+    F10[F10 fait_meteo_quotidienne]:::fait
+    F11[F11 fait_indicateur_pays]:::fait
+    DD([dim_date]):::dim
+    DP([dim_pays]):::dim
+    DF([dim_fournisseur · SCD2]):::scd
+    DPR([dim_produit]):::dim
+    DM([dim_mode_transport]):::dim
+    DE([dim_entrepot]):::dim
+    DB([dim_bureau_douane]):::dim
+    DC([dim_cause_incident]):::dim
+    DI([dim_indicateur]):::dim
+    DK([dim_contrat]):::dim
+    F1 --- DD & DP & DF & DPR & DM & DE
+    F2 --- DD & DP & DB
+    F3 --- DD & DP & DM & DC
+    F4 --- DD
+    F5 --- DD
+    F6 --- DD & DM
+    F7 --- DD & DE
+    F8 --- DP & DM
+    F9 --- DD & DI
+    F10 --- DD & DP
+    F11 --- DP & DI
+    DK --- DF

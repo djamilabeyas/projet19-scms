@@ -1,0 +1,28 @@
+# Bases de données du projet 19 : docker compose up -d
+services:
+  postgres:            # source « fournisseurs » + entrepôt de données
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: {test: ["CMD", "pg_isready", "-U", "postgres"], interval: 5s, retries: 10}
+
+  mysql:               # source « entrepôts régionaux »
+    image: mariadb:10.11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_USER: scms
+      MARIADB_PASSWORD: scms
+      MARIADB_DATABASE: src_entrepots
+    command: ["--local-infile=1"]
+    ports: ["3306:3306"]
+    volumes: [mysqldata:/var/lib/mysql]
+
+  adminer:             # (facultatif) interface web pour explorer les bases : http://localhost:8080
+    image: adminer:4
+    ports: ["8080:8080"]
+
+volumes:
+  pgdata:
+  mysqldata:

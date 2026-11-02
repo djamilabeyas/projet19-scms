@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+data/sources/
+data/api_cache/
+data/depot/
+data/archive/
+data/verite_terrain/
+data/modeles/
+data/logs/
+data/kaggle/

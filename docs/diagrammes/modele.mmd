@@ -1,0 +1,64 @@
+erDiagram
+    direction TB
+    dim_date ||--o{ fait_ligne_expedition : "6 rôles"
+    dim_pays ||--o{ fait_ligne_expedition : ""
+    dim_fournisseur ||--o{ fait_ligne_expedition : "SCD2"
+    dim_produit ||--o{ fait_ligne_expedition : ""
+    dim_mode_transport ||--o{ fait_ligne_expedition : ""
+    dim_entrepot ||--o{ fait_ligne_expedition : ""
+    dim_date ||--o{ fait_dedouanement : "3 rôles"
+    dim_pays ||--o{ fait_dedouanement : ""
+    dim_bureau_douane ||--o{ fait_dedouanement : ""
+    dim_date ||--o{ fait_incident : ""
+    dim_pays ||--o{ fait_incident : ""
+    dim_mode_transport ||--o{ fait_incident : ""
+    dim_cause_incident ||--o{ fait_incident : ""
+    dim_date ||--o{ fait_police_assurance : ""
+    dim_date ||--o{ fait_sinistre : ""
+    dim_date ||--o{ fait_evenement_conteneur : ""
+    dim_mode_transport ||--o{ fait_evenement_conteneur : ""
+    dim_entrepot ||--o{ fait_mouvement_stock : ""
+    dim_date ||--o{ fait_mouvement_stock : ""
+    dim_pays ||--o{ fait_tarif_fret : ""
+    dim_mode_transport ||--o{ fait_tarif_fret : ""
+    dim_date ||--o{ fait_marche_quotidien : ""
+    dim_indicateur ||--o{ fait_marche_quotidien : ""
+    dim_date ||--o{ fait_meteo_quotidienne : ""
+    dim_pays ||--o{ fait_meteo_quotidienne : ""
+    dim_pays ||--o{ fait_indicateur_pays : ""
+    dim_indicateur ||--o{ fait_indicateur_pays : ""
+    dim_fournisseur ||--o{ dim_contrat : "code"
+    fait_ligne_expedition {
+        int id_ligne PK
+        string asn_dn "dégénérée"
+        int date_prevue_sk FK
+        int date_livraison_sk FK
+        int fournisseur_sk FK
+        numeric valeur_usd
+        numeric poids_kg
+        numeric fret_usd
+        int ecart_contractuel_j
+        bool a_temps
+    }
+    dim_fournisseur {
+        int fournisseur_sk PK
+        string code_fournisseur "clé naturelle"
+        numeric note_qualite "historisé"
+        string categorie_risque "historisé"
+        timestamp date_debut_validite
+        timestamp date_fin_validite
+        bool est_courant
+        smallint version
+    }
+    fait_dedouanement {
+        string id_dedouanement PK
+        string asn_dn
+        int delai_dedouanement_j
+        numeric frais_usd
+    }
+    fait_incident {
+        string id_incident PK
+        string asn_dn
+        string description "texte libre"
+        int retard_heures
+    }

@@ -1,0 +1,30 @@
+flowchart TB
+    subgraph S[15 sources]
+      A1[API JSON<br/>Brent · change · météo<br/>Banque mondiale · Comtrade]
+      A2[(PostgreSQL<br/>fournisseurs)]
+      A3[(MySQL<br/>entrepôts · mouvements)]
+      A4[Fichiers<br/>CSV · Excel · XML · JSON]
+    end
+    subgraph D[Déclencheurs]
+      T1[Planification<br/>APScheduler · cron · Airflow]
+      T2[Dépôt de fichier<br/>watchdog data/depot]
+      T3[Événement BDD<br/>trigger + NOTIFY]
+    end
+    D --> P
+    subgraph P[Pipeline ETL · une transaction par étape]
+      direction LR
+      E[Extraction<br/>filigrane · CDC · MD5 fichier] --> ST[(staging.stg_*)]
+      ST --> Q[Transformation<br/>+ contrôles qualité]
+      Q -->|rejets| R[(etl.rejet)]
+      Q --> H[Détection I/U/D<br/>hachages etl.empreinte]
+      H --> L[Chargement<br/>upsert · SCD2 · suppressions]
+    end
+    S --> E
+    L --> W[(dwh<br/>11 faits · 10 dimensions)]
+    W --> ML[ml_batch<br/>3 ML + 2 NLP]
+    ML --> M[(schéma ml<br/>résultats + métriques)]
+    W --> V[controles_finaux<br/>vues de restitution]
+    M --> V
+    V --> TB[Tableau de bord<br/>5 pages · 25 indicateurs]
+    P -.-> J[(etl.journal_execution<br/>etl.journal_etape)]
+    J -.->|reprise sur incident| P
