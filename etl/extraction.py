@@ -73,13 +73,17 @@ def _get(url, params=None, headers=None):
     return r.json()
 
 
-def appel_api(nom, url, params=None, headers=None, cache=None, requis=None, forcer_cache=False):
-    """Appelle l'API ; en cas d'échec (réseau, clé manquante, quota) lit l'instantané local."""
+def appel_api(nom, url, params=None, headers=None, cache=None, requis=None, forcer_cache=False, valider=None):
+    """Appelle l'API ; en cas d'échec (réseau, clé manquante, quota, réponse au format inattendu)
+    lit l'instantané local. `valider(js)` vérifie la structure de la réponse avant de l'utiliser."""
     if forcer_cache:
         return json.loads(cache.read_text(encoding="utf-8")), "cache"
     if not config.OFFLINE and (requis is None or requis):
         try:
-            return _get(url, params, headers), "api"
+            js = _get(url, params, headers)
+            if valider is None or valider(js):
+                return js, "api"
+            log.warning(f"[{nom}] réponse au format inattendu ({str(js)[:150]}) -> repli sur l'instantané {cache.name}")
         except Exception as e:  # noqa
             log.warning(f"[{nom}] API injoignable ({type(e).__name__}) -> repli sur l'instantané {cache.name}")
     elif requis is not None and not requis:
@@ -101,7 +105,8 @@ def ext_api_brent(cx, mode):
                          params={"api_key": config.EIA_API_KEY, "frequency": "daily", "data[0]": "value",
                                  "facets[series][]": "RBRTE", "start": debut.strftime("%Y-%m-%d"),
                                  "end": config.DATE_FIN, "length": 5000},
-                         cache=config.CACHE_API / "eia_brent.json", requis=bool(config.EIA_API_KEY))
+                         cache=config.CACHE_API / "eia_brent.json", requis=bool(config.EIA_API_KEY),
+                         valider=lambda j: bool(j.get("response", {}).get("data")))
     df = pd.DataFrame(js["response"]["data"])
     df = df[pd.to_datetime(df["period"]) >= debut]
     return Extraction(df, perimetre="delta", filigrane=df["period"].max() if len(df) else None, origine=orig)
@@ -110,7 +115,8 @@ def ext_api_brent(cx, mode):
 def ext_api_change(cx, mode):
     debut = _debut_api(cx, "api_change", mode)
     js, orig = appel_api("Frankfurter", f"https://api.frankfurter.app/{debut:%Y-%m-%d}..{config.DATE_FIN}",
-                         params={"from": "USD", "to": ",".join(DEVISES)}, cache=config.CACHE_API / "frankfurter_usd.json")
+                         params={"from": "USD", "to": ",".join(DEVISES)}, cache=config.CACHE_API / "frankfurter_usd.json",
+                         valider=lambda j: isinstance(j, dict) and bool(j.get("rates")))
     lignes = [{"date": d, "devise": k, "taux": v} for d, r in js["rates"].items() if pd.Timestamp(d) >= debut
               for k, v in r.items()]
     df = pd.DataFrame(lignes)
@@ -118,20 +124,34 @@ def ext_api_change(cx, mode):
 
 
 def ext_api_meteo(cx, mode):
+    """34 villes. Si une seule ville échoue (quota Open-Meteo : erreur 429), on reprend TOUTES les villes depuis
+    l'instantané, pour ne pas mélanger météo réelle et météo de l'instantané dans le même chargement."""
+    import time
     debut = _debut_api(cx, "api_meteo", mode)
-    morceaux, origines = [], set()
-    api_hs = False  # si la 1re ville échoue, on ne retente pas les 33 autres
-    for p in PAYS:
-        nom, iso3, lat, lon = p[0], p[2], p[5], p[6]
-        js, orig = appel_api("Open-Meteo", "https://archive-api.open-meteo.com/v1/archive", forcer_cache=api_hs,
-                             params={"latitude": lat, "longitude": lon, "start_date": debut.strftime("%Y-%m-%d"),
-                                     "end_date": config.DATE_FIN, "timezone": "GMT",
-                                     "daily": "temperature_2m_max,precipitation_sum,wind_speed_10m_max"},
-                             cache=config.CACHE_API / "open_meteo" / f"{iso3}.json")
-        origines.add(orig)
-        d = pd.DataFrame(js["daily"]); d["iso3"] = iso3
-        morceaux.append(d[pd.to_datetime(d["time"]) >= debut])
-        api_hs = api_hs or orig == "cache"
+
+    def lire(forcer):
+        morceaux, origines = [], set()
+        for p in PAYS:
+            iso3, lat, lon = p[2], p[5], p[6]
+            js, orig = appel_api("Open-Meteo", "https://archive-api.open-meteo.com/v1/archive", forcer_cache=forcer,
+                                 params={"latitude": lat, "longitude": lon, "start_date": debut.strftime("%Y-%m-%d"),
+                                         "end_date": config.DATE_FIN, "timezone": "GMT",
+                                         "daily": "temperature_2m_max,precipitation_sum,wind_speed_10m_max"},
+                                 cache=config.CACHE_API / "open_meteo" / f"{iso3}.json",
+                                 valider=lambda j: isinstance(j, dict) and bool(j.get("daily", {}).get("time")))
+            origines.add(orig)
+            if orig == "cache" and not forcer:
+                return None, origines
+            d = pd.DataFrame(js["daily"]); d["iso3"] = iso3
+            morceaux.append(d[pd.to_datetime(d["time"]) >= debut])
+            if not forcer:
+                time.sleep(1.0)  # ménage le quota de l'API gratuite
+        return morceaux, origines
+
+    morceaux, origines = lire(False)
+    if morceaux is None:
+        log.warning("[Open-Meteo] au moins une ville en échec -> toutes les villes depuis l'instantané (cohérence)")
+        morceaux, origines = lire(True)
     df = pd.concat(morceaux, ignore_index=True)
     return Extraction(df, perimetre="delta", filigrane=df["time"].max() if len(df) else None, origine="/".join(sorted(origines)))
 
@@ -143,7 +163,8 @@ def ext_api_banque_mondiale(cx, mode):
         js, orig = appel_api("Banque mondiale", f"https://api.worldbank.org/v2/country/{isos}/indicator/{code}",
                              forcer_cache="cache" in origines,
                              params={"format": "json", "date": "2006:2015", "per_page": 2000},
-                             cache=config.CACHE_API / f"worldbank_{code.replace('.', '_')}.json")
+                             cache=config.CACHE_API / f"worldbank_{code.replace('.', '_')}.json",
+                             valider=lambda j: isinstance(j, list) and len(j) > 1 and bool(j[1]))
         origines.add(orig)
         d = pd.json_normalize(js[1])
         morceaux.append(d[["countryiso3code", "date", "value", "indicator.id", "indicator.value"]])
@@ -155,7 +176,8 @@ def ext_api_comtrade(cx, mode):
                          params={"reporterCode": "", "period": ",".join(str(a) for a in range(2006, 2016)),
                                  "cmdCode": "3004", "flowCode": "M", "partnerCode": "0"},
                          headers={"Ocp-Apim-Subscription-Key": config.COMTRADE_API_KEY},
-                         cache=config.CACHE_API / "comtrade_3004.json", requis=bool(config.COMTRADE_API_KEY))
+                         cache=config.CACHE_API / "comtrade_3004.json", requis=bool(config.COMTRADE_API_KEY),
+                         valider=lambda j: isinstance(j, dict) and bool(j.get("data")))
     return Extraction(pd.DataFrame(js["data"]), perimetre="complet", origine=orig)
 
 
